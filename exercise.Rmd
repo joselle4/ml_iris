@@ -1,0 +1,163 @@
+---
+title: "R ML Exercise - iris"
+output:
+  html_document:
+    df_print: paged
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r, warning=FALSE}
+library(caret)
+library(data.table)
+library(plotly)
+```
+
+
+```{r, cache=TRUE}
+# attach iris
+data(iris)
+
+dt <- iris
+```
+
+```{r}
+# obtain 80% of the data set for training
+validation_index <- createDataPartition(dt$Species, p = 0.8, list = FALSE)
+# select 20% for validation and 80% for training
+dtValidation <- dt[-validation_index, ] %>% data.table()
+dtTest <- dt[validation_index, ] %>% data.table()
+```
+
+# Summarize data: 
+- dimensions
+- types of attributes
+- peak at the data
+- levels of classes, 
+- breakdown of the instances in each class
+- statistical summary of all attributes
+
+```{r dim_data}
+# dimensions
+dim(dtTest)
+```
+
+
+```{r list_attributes}
+# list attributes
+sapply(dt, class)
+```
+
+
+```{r peek}
+# peek at dataset
+head(dt)
+```
+
+
+```{r}
+# list the levels for the class
+levels(dt$Species)
+```
+
+```{r}
+# class distribution of test data
+percentage <- prop.table(table(dtTest$Species))*100
+cbind(freq = table(dtTest$Species), percentage = percentage)
+```
+
+```{r}
+# statistical summary
+summary(dtTest)
+```
+
+# Visualize Dataset
+```{r boxplots}
+# univariate plots: boxplot of each individual variable
+dtPlot <- melt.data.table(dtTest, id.vars = "Species",variable.name = "Type", value.name = "Value", 
+                          measure.vars = c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width"))
+dtPlot$Normalized <- (dtPlot$Value - min(dtPlot$Value))/(max(dtPlot$Value) - min(dtPlot$Value))
+plot_ly(dtPlot, y = ~Normalized, color = ~Type, type = "box", boxpoints = "all", jitter = 0.3)
+```
+
+```{r barplot}
+# bar plot of class breakdown
+plot_ly(dtTest[, .N, keyby = Species], y = ~N, x = ~Species, type = "bar")
+```
+
+```{r}
+# multivariate plots: feature plot of attributes and color by class, box plot for each attribute by species
+```
+
+# Evaluate Some Algorithms
+1. Set-up the test harness to use 10-fold cross validation
+  - This will split our dataset into 10 parts, train in 9 and test on 1 and release for all combinations of train-test splits. We will also repeat the process 3 times for each algorithm with different splits of the data into 10 groups, in an effort to get a more accurate estimate.
+  - the metric of “Accuracy” to evaluate models. 
+    - This is a ratio of the number of correctly predicted instances in divided by the total number of instances in the dataset multiplied by 100 to give a percentage (e.g. 95% accurate). 
+    - We will be using the metric variable when we run build and evaluate each model next.
+2. Build 5 different models to predict species from flower measurements
+  - Linear Discriminant Analysis (LDA); simple linear
+  - Classification and Regression Trees (CART); nonlinear
+  - k-Nearest Neighbors (kNN); nonlinear
+  - Support Vector Machines (SVM) with a linear kernel; complex linear
+  - Random Forest (RF); complex linear
+3. Select the best model
+
+## Test Harness
+```{r test_harness}
+control <- trainControl(method = "cv", number = 10)
+metric <- "Accuracy"
+```
+
+## Build models
+```{r build_models}
+# Linear Discriminant Analysis (LDA)
+set.seed(7)
+fit.lda <- train(Species ~ ., data = dtTest, method = "lda", metric = metric, trControl = control)
+
+# Classification and Regression Trees (CART)
+set.seed(7)
+fit.cart <- train(Species ~ ., data = dtTest, method = "rpart", metric = metric, trControl = control)
+
+# k-Nearest Neighbors (kNN)
+set.seed(7)
+fit.knn <- train(Species ~ ., data = dtTest, method = "knn", metric = metric, trControl = control)
+
+# Support Vector Machines (SVM) with a linear kernel
+set.seed(7)
+fit.svm <- train(Species ~ ., data = dtTest, method = "svmRadial", metric = metric, trControl = control)
+
+# Random Forest (RF)
+set.seed(7)
+fit.rf <- train(Species ~ ., data = dtTest, method = "rf", metric = metric, trControl = control)
+```
+
+## Select the best model
+
+```{r best_model}
+# sumarize accuracy of the models
+results <- resamples(list(lda = fit.lda, cart = fit.cart, knn = fit.knn, svm = fit.svm, rf = fit.rf))
+summary(results)
+```
+
+```{r plot_models}
+# compare the accuracy of the models
+dotplot(results)
+```
+
+```{r summarize_best_model}
+# summarize the best model
+print(fit.lda)
+```
+
+# Make Predictions
+- since LDA was the most accurate, run LDA on the validation 
+```{r predict}
+# estimate skill of LDA
+predictions <- predict(fit.lda, dtValidation)
+confusionMatrix(predictions, dtValidation$Species)
+```
+
+
